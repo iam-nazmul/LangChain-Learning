@@ -17,7 +17,7 @@ parser = StrOutputParser()
 chain = prompt | model | parser          # ← এটাই LCEL
 print(chain.invoke({"topic": "মাধ্যাকর্ষণ"}))
 
-
+print("---")
 # ===============================================================
 
 from pydantic import BaseModel, Field
@@ -30,5 +30,12 @@ class MovieReview(BaseModel):
 structured_model = model.with_structured_output(MovieReview)
 result = structured_model.invoke("Inception সিনেমাটির একটি রিভিউ দাও।")
 print(result.title, result.rating, result.summary)
+
+print("---")
 result = structured_model.invoke("Master সিনেমাটির একটি রিভিউ দাও।")
 print(result.title, result.rating, result.summary)
+print("---")
+
+result = structured_model.invoke("Suggest me a movie to watch which rating above 8 and is suitable for kids.")
+print(result.title, result.rating, result.summary)
+print("---")
