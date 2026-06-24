@@ -1,0 +1,146 @@
+import os
+import json
+import requests
+
+
+class LangChainAssistant:
+    def __init__(self, model_name="gemma3:4b", ollama_url="http://localhost:11434"):
+        self.markdown_content = ""
+        self.file_path = None
+        self.model_name = model_name
+        self.ollama_url = ollama_url
+
+    def generate_markdown(self, prompt):
+        """
+        Generates Markdown content using a local Ollama model,
+        streaming chunks and APPENDING each one to the file as it arrives
+        (existing file content is preserved, not overwritten).
+        """
+        if not self.file_path:
+            print("Error: No file path set. Call set_file_path() first.")
+            return self
+
+        try:
+            response = requests.post(
+                f"{self.ollama_url}/api/generate",
+                json={
+                    "model": self.model_name,
+                    "prompt": prompt,
+                    "stream": True,
+                },
+                timeout=120,
+                stream=True,
+            )
+            response.raise_for_status()
+
+            # Add a separator + the prompt as a heading, so each run
+            # is clearly delimited in the merged file.
+            header = f"\n\n---\n\n## Prompt: {prompt}\n\n"
+
+            # "a" = append mode. Creates the file if it doesn't exist yet,
+            # and adds to the end if it does -- never truncates.
+            with open(self.file_path, "a", encoding="utf-8") as f:
+                f.write(header)
+                f.flush()
+                self.markdown_content += header
+
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line.decode("utf-8"))
+                    except json.JSONDecodeError:
+                        continue
+
+                    text_piece = chunk.get("response", "")
+                    if text_piece:
+                        print(text_piece, end="", flush=True)
+                        f.write(text_piece)
+                        f.flush()
+                        self.markdown_content += text_piece
+
+                    if chunk.get("done", False):
+                        break
+                self.markdown_content += "\n\n---\n\n"  # Add a closing separator for clarity
+
+            print(f"\n\nFinished streaming. Content appended to: {self.file_path}")
+            return self
+
+        except requests.exceptions.ConnectionError:
+            print(
+                "Error: Could not connect to Ollama. "
+                "Make sure Ollama is running (try `ollama serve` or just open the Ollama app)."
+            )
+            return self
+        except Exception as e:
+            print(f"Error during text generation: {e}")
+            return self
+
+    def set_file_path(self, path):
+        self.file_path = path
+        return self
+
+    def write_to_file(self):
+        """Kept for compatibility; appends in-memory content to file."""
+        if not self.markdown_content:
+            print("No content to write. Did generation succeed?")
+            return False
+        try:
+            with open(self.file_path, "a", encoding="utf-8") as f:
+                f.write(self.markdown_content)
+            print(f"Markdown content appended to: {self.file_path}")
+            return True
+        except Exception as e:
+            print(f"Error writing to file: {e}")
+            return False
+
+
+# Words that quit the loop (case-insensitive). A literal Ctrl+Q key
+# combo can't be read by input() in a normal terminal -- typing one
+# of these and pressing Enter is the practical equivalent.
+QUIT_WORDS = {"q", "quit", "exit", ":q", "ctrl+q"}
+
+
+def main():
+    assistant = LangChainAssistant(model_name="gemma3:4b")
+    assistant.set_file_path("Output.md")
+
+    print("Type your prompt and press Enter.")
+    print(f"Type one of {sorted(QUIT_WORDS)} (then Enter) to quit.\n")
+
+    while True:
+        try:
+            P1 = input("Enter your prompt for the LangChain assistant: ")
+        except (EOFError, KeyboardInterrupt):
+            # Ctrl+C / Ctrl+D also exit cleanly
+            print("\nExiting...")
+            break
+
+        p1 = P1.strip()  # Remove leading/trailing whitespace
+
+        if not p1:
+            print("Empty prompt, try again.\n")
+            continue
+
+        if p1.lower() in QUIT_WORDS:
+            print("Quit signal received. Exiting...")
+            break
+
+        prompt = (
+            f"{p1} and attach helping questions section at "
+            "the end. write in bangla language."
+        )
+
+        assistant.generate_markdown(prompt)
+
+        # Reset in-memory buffer between runs so it doesn't keep
+        # growing unbounded across many prompts in one session.
+        assistant.markdown_content = ""
+
+        print()  # spacing before next prompt
+
+    print("Operation complete! All responses are in Output.md")
+
+
+if __name__ == "__main__":
+    main()

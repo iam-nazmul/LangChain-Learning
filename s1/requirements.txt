@@ -1,0 +1,7 @@
+
+langchain 
+langgraph 
+langsmith
+langchain-openai      # অথবা langchain-anthropic, langchain-google-genai ইত্যাদি
+langchain-ollama
+python-dotenv
