@@ -153,3 +153,299 @@ full_chain.invoke({"topic": "What is LCEL?"})
 এখানে প্রথমে `RunnableParallel` দিয়ে ভাষা detect করা হচ্ছে, তারপর `RunnableBranch` সেই ভাষা অনুযায়ী সঠিক response chain-এ পাঠাচ্ছে।
 
 কোনো একটা অংশ নিয়ে আরও গভীরে যেতে চাইলে (যেমন `RunnableLambda`, error handling, বা async variant গুলো) বলো — সেটাও explain করে দিচ্ছি।
+
+
+
+---
+
+# RunnableLambda
+
+`RunnableLambda` দিয়ে কোনো সাধারণ Python function (বা lambda) কে একটা Runnable-এ পরিণত করা যায়, যাতে সেটাকে LCEL chain-এর ভেতরে `|` অপারেটর দিয়ে অন্য component-গুলোর সাথে বসানো যায়।
+
+আসল সমস্যাটা হলো — chain-এর মধ্যে যদি custom logic (যেমন string manipulation, কোনো calculation, বা data transform) ঢোকাতে চাও, plain Python function সরাসরি `|` operator support করে না। `RunnableLambda` সেই function-টাকে wrap করে দেয়, ফলে সেটা অন্য সব Runnable (prompt, model, parser) এর মতই `invoke`, `batch`, `stream` করতে পারে।
+
+```python
+from langchain_core.runnables import RunnableLambda
+
+def word_count(text: str) -> int:
+    return len(text.split())
+
+counter = RunnableLambda(word_count)
+counter.invoke("আমি ভালো আছি")   # → 3
+```
+
+---
+
+## Chain-এর ভেতরে ব্যবহার
+
+```python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda
+
+prompt = ChatPromptTemplate.from_template("{topic} নিয়ে একটা ছোট প্যারাগ্রাফ লেখো")
+model = ChatOpenAI()
+parser = StrOutputParser()
+
+def to_uppercase(text: str) -> str:
+    return text.upper()
+
+chain = prompt | model | parser | RunnableLambda(to_uppercase)
+
+chain.invoke({"topic": "নদী"})
+```
+
+এখানে model-এর response আসার পর সেটাকে `to_uppercase` function দিয়ে post-process করা হলো।
+
+### স্বয়ংক্রিয় coercion
+
+LCEL chain-এ `|` দিয়ে যদি plain function বসানো হয়, LangChain নিজেই সেটাকে `RunnableLambda`-এ convert করে নেয় — explicit wrap না করলেও চলে:
+
+```python
+chain = prompt | model | parser | to_uppercase   # to_uppercase নিজেই auto-wrap হয়ে যাবে
+```
+
+তবে explicit ভাবে `RunnableLambda(...)` লেখা ভালো practice, কারণ এতে কোডটা পড়তে স্পষ্ট হয় এবং কিছু edge case-এ (যেমন type hints না থাকলে) auto-coercion ঠিকভাবে কাজ না করার সম্ভাবনা কমে।
+
+---
+
+## Dict input নিয়ে কাজ করা
+
+Chain-এর মাঝে data সাধারণত dictionary আকারে থাকে, তাই function-টাকে সেই dict গ্রহণ করতে হয়:
+
+```python
+def format_question(data: dict) -> str:
+    return f"প্রশ্ন: {data['question']} (ভাষা: {data['language']})"
+
+chain = RunnableLambda(format_question) | prompt | model | parser
+```
+
+## Lambda এক্সপ্রেশন সরাসরি
+
+ছোট-খাটো transform-এর জন্য সরাসরি `lambda` ও ব্যবহার করা যায়:
+
+```python
+chain = prompt | model | parser | RunnableLambda(lambda x: x.strip().lower())
+```
+
+---
+
+## একটা গুরুত্বপূর্ণ সীমাবদ্ধতা: streaming
+
+`RunnableLambda` দিয়ে wrap করা সাধারণ function **streaming support করে না** by default — অর্থাৎ chain-এ যদি এটা ব্যবহার করো, তাহলে আগের ধাপ থেকে আসা chunk গুলো এই function-এ একসাথে (পুরো input হিসেবে) আসবে, token-by-token আসবে না। কারণ function নিজে জানে না কীভাবে partial input handle করতে হয়।
+
+Streaming বজায় রাখতে চাইলে generator function ব্যবহার করতে হয়:
+
+```python
+def stream_transform(chunks):
+    for chunk in chunks:
+        yield chunk.upper()
+
+chain = prompt | model | parser | RunnableLambda(stream_transform)
+```
+
+এখানে function input হিসেবে একটা iterator নেয় এবং chunk-by-chunk yield করে, ফলে streaming behavior ঠিক থাকে।
+
+---
+
+## RunnableLambda বনাম `.assign()` / inline dict
+
+ছোট transform-এর জন্য অনেক সময় `RunnablePassthrough.assign()`-এর ভেতরেও `RunnableLambda` ঢোকানো হয়:
+
+```python
+from langchain_core.runnables import RunnablePassthrough
+
+chain = RunnablePassthrough.assign(
+    word_count=RunnableLambda(lambda x: len(x["text"].split()))
+)
+
+chain.invoke({"text": "এটা একটা পরীক্ষা বাক্য"})
+# → {"text": "এটা একটা পরীক্ষা বাক্য", "word_count": 4}
+```
+
+এভাবে original input অপরিবর্তিত রেখে নতুন একটা computed key যুক্ত করা যায় — অনেকটা `RunnableParallel`-এর মতই, কিন্তু existing keys preserve করে।
+
+---
+
+## কখন ব্যবহার করবে
+
+- **Pre-processing**: model-এ পাঠানোর আগে input format/clean করতে
+- **Post-processing**: model output থেকে কিছু extract বা reformat করতে (যেমন JSON parse, regex দিয়ে filter)
+- **Conditional logic-এর ছোট অংশ**: `RunnableBranch`-এর condition function হিসেবেও আসলে এটাই কাজ করে ভেতরে ভেতরে
+- **Debugging**: মাঝে একটা `RunnableLambda(lambda x: print(x) or x)` বসিয়ে intermediate value দেখা
+
+কোনো নির্দিষ্ট use-case নিয়ে (যেমন error handling এর জন্য `with_fallbacks`, বা retry logic) আরও জানতে চাইলে বলো।
+
+
+---
+
+
+# Error Handling
+
+LCEL chain-এ error handle করার মূলত তিনটা প্রধান টুল আছে: `with_retry`, `with_fallbacks`, আর `RunnableLambda`-এর ভেতরে try/except।
+
+## with_retry — ব্যর্থ হলে আবার চেষ্টা করা
+
+API rate limit, network glitch, বা timeout-এর মতো transient error-এর জন্য পুরো call আবার চেষ্টা করানো যায়।
+
+```python
+from langchain_openai import ChatOpenAI
+
+model = ChatOpenAI()
+
+resilient_model = model.with_retry(
+    stop_after_attempt=3,          # সর্বোচ্চ ৩ বার চেষ্টা
+    wait_exponential_jitter=True,  # প্রতি বার অপেক্ষার সময় বাড়বে (exponential backoff)
+)
+
+chain = prompt | resilient_model | parser
+chain.invoke({"topic": "বৃষ্টি"})
+```
+
+এখানে যদি প্রথম call ব্যর্থ হয়, LangChain নিজে নিজে আবার চেষ্টা করবে (jitter দিয়ে wait করে যাতে একসাথে অনেক request retry করে server-কে আরও চাপ না দেয়)। ৩ বারের পরেও ব্যর্থ হলে exception raise হবে।
+
+## with_fallbacks — primary ব্যর্থ হলে backup চালানো
+
+যদি একটা model/chain সম্পূর্ণ ব্যর্থ হয় (যেমন downtime, বা error যেটা retry করেও ঠিক হয় না), তখন সম্পূর্ণ ভিন্ন একটা backup Runnable চালানো যায়।
+
+```python
+primary_model = ChatOpenAI(model="gpt-4o")
+backup_model = ChatOpenAI(model="gpt-3.5-turbo")  # সস্তা/দ্রুত fallback
+
+model_with_fallback = primary_model.with_fallbacks([backup_model])
+
+chain = prompt | model_with_fallback | parser
+```
+
+একাধিক fallback chain করেও দেওয়া যায় — প্রথমটা fail করলে দ্বিতীয়টা, সেটাও fail করলে তৃতীয়টা, এভাবে।
+
+```python
+chain_with_fallback = primary_chain.with_fallbacks(
+    [backup_chain_1, backup_chain_2]
+)
+```
+
+`with_retry` আর `with_fallbacks` একসাথেও বসানো যায় — আগে retry, retry সব শেষ হয়ে গেলে fallback:
+
+```python
+robust_model = model.with_retry(stop_after_attempt=2).with_fallbacks([backup_model])
+```
+
+## RunnableLambda-তে নিজে try/except
+
+custom error handling logic দরকার হলে (যেমন error হলে একটা default value ফেরত দেওয়া) `RunnableLambda` দিয়ে নিজে handle করা যায়।
+
+```python
+from langchain_core.runnables import RunnableLambda
+
+def safe_parse(text: str) -> dict:
+    try:
+        import json
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"error": "parse failed", "raw": text}
+
+chain = prompt | model | parser | RunnableLambda(safe_parse)
+```
+
+## batch-এ partial failure handle করা
+
+`batch()` দিয়ে অনেকগুলো input চালালে, default-এ একটা ব্যর্থ হলে পুরো batch exception ছুঁড়ে দেয়। `return_exceptions=True` দিলে বাকি input গুলোর result পাওয়া যায়, আর যেটা fail করেছে সেখানে exception object বসে থাকে।
+
+```python
+results = chain.batch(
+    [{"topic": "বিড়াল"}, {"topic": "কুকুর"}, {"topic": ""}],
+    return_exceptions=True,
+)
+
+for r in results:
+    if isinstance(r, Exception):
+        print("ব্যর্থ:", r)
+    else:
+        print("সফল:", r)
+```
+
+---
+
+# Async Variants
+
+LangChain-এর প্রতিটা sync method-এর একটা async ভার্সন আছে — নাম শুরু হয় `a` দিয়ে।
+
+| Sync | Async |
+|---|---|
+| `invoke` | `ainvoke` |
+| `batch` | `abatch` |
+| `stream` | `astream` |
+| (নাই) | `astream_events` |
+
+```python
+import asyncio
+
+async def main():
+    result = await chain.ainvoke({"topic": "সূর্য"})
+    print(result)
+
+    results = await chain.abatch([
+        {"topic": "বিড়াল"},
+        {"topic": "কুকুর"},
+    ])
+
+    async for chunk in chain.astream({"topic": "চাঁদ"}):
+        print(chunk, end="", flush=True)
+
+asyncio.run(main())
+```
+
+## কেন async ব্যবহার করবে
+
+মূল সুবিধা concurrency — একাধিক independent LLM call একসাথে চালাতে চাইলে (যেমন web server-এ একসাথে অনেক user request আসছে), async দিয়ে CPU/thread কম খরচ করেই বেশি request handle করা যায়।
+
+```python
+async def process_many(topics: list[str]):
+    tasks = [chain.ainvoke({"topic": t}) for t in topics]
+    return await asyncio.gather(*tasks)
+
+results = asyncio.run(process_many(["AI", "বাংলাদেশ", "ক্রিকেট"]))
+```
+
+এখানে `asyncio.gather` দিয়ে সবগুলো call একসাথে শুরু হচ্ছে এবং সবার শেষ হওয়ার জন্য একবারে অপেক্ষা করা হচ্ছে — `abatch` ভেতরে ভেতরে কাছাকাছি এটাই করে, কিন্তু নিজে manual concurrency লিখলে আরও বেশি control পাওয়া যায় (যেমন rate-limit করে চালানো)।
+
+## astream_events — চেইনের প্রতিটা ধাপের ইভেন্ট দেখা
+
+জটিল চেইনে (একাধিক sub-chain, tool call, retriever) ঠিক কোন ধাপে কী ঘটছে সেটা track করতে `astream_events` ব্যবহার হয়। এটা প্রতিটা component-এর start/end ইভেন্ট ফেরত দেয়, শুধু final output না।
+
+```python
+async def trace():
+    async for event in chain.astream_events({"topic": "ইতিহাস"}, version="v2"):
+        kind = event["event"]
+        if kind == "on_chat_model_stream":
+            print(event["data"]["chunk"].content, end="")
+        elif kind == "on_chain_start":
+            print(f"\n[শুরু হলো: {event['name']}]")
+
+asyncio.run(trace())
+```
+
+UI-তে যদি দেখাতে চাও যে "এখন retriever চলছে", "এখন model token generate করছে" — এই granular visibility `astream_events` দিয়েই সম্ভব।
+
+## কোন কোন component async support করে
+
+LangChain-এর built-in সব component (prompt, model, parser, retriever) এর async ভার্সন আছে। কিন্তু নিজের লেখা `RunnableLambda` যদি plain (sync) function হয়, LangChain স্বয়ংক্রিয়ভাবে সেটাকে thread-এ চালিয়ে async context-এ ব্যবহার করার চেষ্টা করে — কাজ করে, কিন্তু true async না। সত্যিকারের non-blocking behavior চাইলে নিজে `async def` function লিখে `RunnableLambda` কে দুটো function (sync + async ভার্সন) দেওয়া যায়:
+
+```python
+def sync_fn(x):
+    return x.upper()
+
+async def async_fn(x):
+    # imagine কোনো async I/O এখানে
+    return x.upper()
+
+dual_runnable = RunnableLambda(sync_fn, afunc=async_fn)
+```
+
+এতে sync context-এ `sync_fn` চলবে, async context-এ (`ainvoke`/`astream`) আসল async function `async_fn` চলবে — কোনো thread-pool overhead লাগবে না।
+
+---
+
+কিছু নির্দিষ্ট দিক নিয়ে আরও গভীরে যাওয়া যায়, যেমন `RunnableConfig` দিয়ে timeout/tag/metadata pass করা, বা LangSmith-এর সাথে integration করে error trace দেখা — চাইলে বলো।
