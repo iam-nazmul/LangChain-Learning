@@ -90,3 +90,99 @@ response2 = model.invoke(messages)
 - **AIMessage** = অভিনেতার (AI) সংলাপ
 
 কোনো নির্দিষ্ট অংশ নিয়ে আরও গভীরে যেতে চান — যেমন `ToolMessage`, streaming response, বা multi-turn memory management?
+
+
+---
+
+
+সব কয়টা নিয়েই সংক্ষেপে বলি, তারপর আপনি যেটায় আগ্রহী সেটায় আরও গভীরে যাওয়া যাবে।
+
+## ১. `ToolMessage`
+
+যখন AI কোনো **tool/function কল** করতে চায়, তখন প্রসেসটা একটু ভিন্ন হয় — তিনটা ধাপে চলে:
+
+```python
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.tools import tool
+
+@tool
+def get_weather(city: str) -> str:
+    """কোনো শহরের আবহাওয়া জানায়।"""
+    return f"{city}-এ আজ ৩২°C, রোদ আছে।"
+
+model_with_tools = model.bind_tools([get_weather])
+
+messages = [HumanMessage(content="ঢাকার আবহাওয়া কেমন?")]
+
+# ধাপ ১: মডেল বুঝে যে tool কল লাগবে
+ai_msg = model_with_tools.invoke(messages)
+messages.append(ai_msg)  # এতে ai_msg.tool_calls থাকবে
+
+# ধাপ ২: আমরা সেই tool বাস্তবে রান করি
+for tool_call in ai_msg.tool_calls:
+    result = get_weather.invoke(tool_call["args"])
+    # ধাপ ৩: ফলাফল ToolMessage হিসেবে যুক্ত করি
+    messages.append(ToolMessage(
+        content=result,
+        tool_call_id=tool_call["id"]  # কোন কলের উত্তর তা ট্র্যাক করার জন্য জরুরি
+    ))
+
+# এখন মডেল আবার কল করলে সে tool-এর রেজাল্ট দেখে চূড়ান্ত উত্তর দেবে
+final_response = model_with_tools.invoke(messages)
+```
+
+`tool_call_id` টা গুরুত্বপূর্ণ — একসাথে একাধিক tool কল হলে কোনটার উত্তর কোনটা, তা মডেলকে বুঝতে সাহায্য করে।
+
+## ২. Streaming Response
+
+পুরো উত্তর একবারে না দিয়ে, **টুকরো টুকরো (chunk)** করে রিয়েল-টাইমে দেখানো যায় — ChatGPT-তে যেমন টাইপ হতে হতে উত্তর আসে।
+
+```python
+for chunk in model.stream(messages):
+    print(chunk.content, end="", flush=True)
+```
+
+প্রতিটা `chunk` একটা `AIMessageChunk` — যেগুলো একসাথে জোড়া দিলে পুরো `AIMessage` হয়:
+
+```python
+full_response = None
+for chunk in model.stream(messages):
+    full_response = chunk if full_response is None else full_response + chunk
+    print(chunk.content, end="")
+
+print("\n\nসম্পূর্ণ মেসেজ:", full_response)
+```
+
+Async ভার্সনও আছে (`astream`), যা FastAPI বা ওয়েব অ্যাপে real-time UI আপডেটের জন্য বেশি ব্যবহৃত হয়।
+
+## ৩. Multi-turn Memory Management
+
+লম্বা কথোপকথনে সব মেসেজ জমিয়ে রাখলে context window ভরে যায় এবং খরচও বাড়ে। তাই মেসেজ history ম্যানেজ করার কয়েকটা কৌশল আছে:
+
+**ক) সাধারণ list-based approach** (ছোট কথোপকথনের জন্য):
+```python
+conversation = []
+conversation.append(HumanMessage(content="আমার নাম রাহুল।"))
+conversation.append(model.invoke(conversation))
+conversation.append(HumanMessage(content="আমার নাম কী?"))
+response = model.invoke(conversation)  # আগের context থেকে "রাহুল" বলতে পারবে
+```
+
+**খ) `trim_messages`** — পুরনো মেসেজ ছেঁটে token limit-এর মধ্যে রাখা:
+```python
+from langchain_core.messages import trim_messages
+
+trimmed = trim_messages(
+    conversation,
+    max_tokens=1000,
+    strategy="last",       # শেষের মেসেজগুলো রাখো
+    token_counter=model,
+    include_system=True,   # SystemMessage সবসময় রাখো
+)
+```
+
+**গ) `RunnableWithMessageHistory` / LangGraph checkpointer** — প্রোডাকশন অ্যাপে session-ভিত্তিক memory persist করার জন্য, যেখানে প্রতিটা user-এর আলাদা `session_id` থাকে এবং history ডাটাবেসে/মেমোরিতে সংরক্ষিত থাকে।
+
+---
+
+আপনি কোন দিকে কাজ করছেন — একটা **chatbot বানাচ্ছেন** (তাহলে memory management গুরুত্বপূর্ণ), নাকি **agent/tool-calling** নিয়ে কাজ করছেন (তাহলে ToolMessage), নাকি **UI/frontend** নিয়ে (তাহলে streaming)?
