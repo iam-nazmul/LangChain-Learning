@@ -449,3 +449,425 @@ dual_runnable = RunnableLambda(sync_fn, afunc=async_fn)
 ---
 
 কিছু নির্দিষ্ট দিক নিয়ে আরও গভীরে যাওয়া যায়, যেমন `RunnableConfig` দিয়ে timeout/tag/metadata pass করা, বা LangSmith-এর সাথে integration করে error trace দেখা — চাইলে বলো।
+
+
+---
+
+## LCEL (LangChain Expression Language) কী?
+
+**LCEL** হলো LangChain-এর একটি declarative syntax, যা ব্যবহার করে বিভিন্ন LLM, Prompt, Retriever, Parser ইত্যাদি একসাথে chain আকারে যুক্ত করা যায়।
+
+ধরুন:
+
+```python
+chain = prompt | llm | output_parser
+```
+
+এখানে `|` অপারেটর ব্যবহার করে এক component-এর output পরের component-এর input হিসেবে যাচ্ছে।
+
+---
+
+# ১. Runnable কী?
+
+LangChain-এ প্রায় সব component-ই **Runnable**।
+
+যেমন:
+
+* PromptTemplate
+* ChatModel
+* OutputParser
+* Retriever
+* Custom Function
+
+সবগুলোই Runnable interface follow করে।
+
+Runnable-এর মূল কাজ:
+
+```
+Input → Process → Output
+```
+
+---
+
+# ২. invoke()
+
+একটি input দিয়ে chain একবার execute করার জন্য `invoke()` ব্যবহার করা হয়।
+
+### Example
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI()
+
+result = llm.invoke("বাংলাদেশের রাজধানী কোথায়?")
+print(result.content)
+```
+
+### Flow
+
+```
+Input
+  ↓
+invoke()
+  ↓
+LLM
+  ↓
+Output
+```
+
+---
+
+## LCEL Example
+
+```python
+chain = prompt | llm
+
+response = chain.invoke({
+    "topic": "Python"
+})
+```
+
+---
+
+# ৩. batch()
+
+একাধিক input একসাথে process করার জন্য।
+
+যখন ১০০টা query একবারে চালাতে হবে তখন loop না দিয়ে batch ব্যবহার করা যায়।
+
+### Example
+
+```python
+questions = [
+    "What is Python?",
+    "What is Django?",
+    "What is FastAPI?"
+]
+
+results = llm.batch(questions)
+
+for r in results:
+    print(r.content)
+```
+
+---
+
+### Flow
+
+```
+Question 1 ─┐
+Question 2 ─┼── batch()
+Question 3 ─┘
+              ↓
+           Outputs
+```
+
+---
+
+# ৪. stream()
+
+Response আসার সাথে সাথে token-by-token পাওয়া যায়।
+
+ChatGPT typing effect এর মতো।
+
+### Example
+
+```python
+for chunk in llm.stream("Explain Python"):
+    print(chunk.content, end="")
+```
+
+---
+
+### Flow
+
+```
+Input
+  ↓
+LLM
+  ↓
+Token 1
+Token 2
+Token 3
+Token 4
+...
+```
+
+---
+
+# RunnableParallel
+
+একই input দিয়ে একাধিক Runnable parallel-এ execute করে।
+
+---
+
+## Example
+
+```python
+from langchain_core.runnables import RunnableParallel
+
+chain = RunnableParallel(
+    summary=summary_chain,
+    keywords=keyword_chain,
+    sentiment=sentiment_chain,
+)
+
+result = chain.invoke("আজকের আবহাওয়া সুন্দর")
+```
+
+Output:
+
+```python
+{
+    "summary": "...",
+    "keywords": "...",
+    "sentiment": "positive"
+}
+```
+
+---
+
+### Diagram
+
+```
+                    ┌── Summary Chain
+Input ──────────────┤
+                    ├── Keyword Chain
+                    │
+                    └── Sentiment Chain
+                          ↓
+                    Combined Result
+```
+
+---
+
+## Practical Use Case
+
+একটি article থেকে একসাথে:
+
+* Summary
+* Keywords
+* Sentiment
+* Category
+
+generate করতে।
+
+---
+
+# RunnablePassthrough
+
+Input-কে modify না করে সামনে পাঠিয়ে দেয়।
+
+---
+
+## Example
+
+```python
+from langchain_core.runnables import RunnablePassthrough
+
+chain = RunnablePassthrough()
+
+result = chain.invoke("Hello")
+```
+
+Output:
+
+```python
+"Hello"
+```
+
+---
+
+## Real Example
+
+```python
+chain = {
+    "question": RunnablePassthrough(),
+    "answer": llm
+}
+```
+
+Input:
+
+```python
+"What is Python?"
+```
+
+Output:
+
+```python
+{
+    "question": "What is Python?",
+    "answer": "Python is ..."
+}
+```
+
+---
+
+### Diagram
+
+```
+Input
+  │
+  ├──────────► Question
+  │
+  └──────────► LLM
+                 ↓
+               Answer
+```
+
+---
+
+## Use Case
+
+RAG Application-এ:
+
+```python
+{
+    "question": RunnablePassthrough(),
+    "context": retriever
+}
+```
+
+একই question retriever এবং LLM উভয়ের কাছে পাঠাতে।
+
+---
+
+# RunnableBranch
+
+Condition অনুযায়ী different chain execute করে।
+
+Python-এর `if-else` এর মতো।
+
+---
+
+## Example
+
+```python
+from langchain_core.runnables import RunnableBranch
+
+branch = RunnableBranch(
+    (
+        lambda x: "python" in x.lower(),
+        python_chain
+    ),
+    (
+        lambda x: "django" in x.lower(),
+        django_chain
+    ),
+    default_chain
+)
+```
+
+---
+
+Input:
+
+```python
+branch.invoke("Tell me about Python")
+```
+
+Run করবে:
+
+```python
+python_chain
+```
+
+---
+
+Input:
+
+```python
+branch.invoke("Tell me about Django")
+```
+
+Run করবে:
+
+```python
+django_chain
+```
+
+---
+
+### Diagram
+
+```
+                ┌─ Python Chain
+Input ─ Check ──┤
+                │
+                ├─ Django Chain
+                │
+                └─ Default Chain
+```
+
+---
+
+## Practical Use Case
+
+একটি AI Assistant:
+
+```python
+যদি:
+    Billing Question → Billing Chain
+
+যদি:
+    Technical Question → Technical Chain
+
+যদি:
+    Sales Question → Sales Chain
+
+নাহলে:
+    General Assistant Chain
+```
+
+---
+
+# সবকিছু একসাথে
+
+ধরুন আপনি একটি RAG Chatbot বানাচ্ছেন:
+
+```python
+chain = (
+    {
+        "question": RunnablePassthrough(),
+        "context": retriever
+    }
+    | prompt
+    | llm
+)
+```
+
+Flow:
+
+```
+User Question
+      │
+      ├────► Retriever
+      │          ↓
+      │      Context
+      │
+      └────► Original Question
+                    ↓
+                 Prompt
+                    ↓
+                   LLM
+                    ↓
+                 Answer
+```
+
+---
+
+## সংক্ষেপে
+
+| Component             | কাজ                                         |
+| --------------------- | ------------------------------------------- |
+| `invoke()`            | একবারে একটি input execute                   |
+| `batch()`             | অনেক input একসাথে execute                   |
+| `stream()`            | token-by-token output                       |
+| `RunnableParallel`    | একই input দিয়ে একাধিক chain parallel চালানো |
+| `RunnablePassthrough` | input অপরিবর্তিত রেখে forward করা           |
+| `RunnableBranch`      | condition অনুযায়ী ভিন্ন chain চালানো        |
+| `LCEL ( \| )`         | Runnable গুলো chain আকারে connect করা       |
+
+LCEL-এর সবচেয়ে বড় সুবিধা হলো আপনি খুব কম কোডে জটিল AI workflow (RAG, Agent, Multi-step Pipeline, Router, Parallel Processing) তৈরি করতে পারেন।
