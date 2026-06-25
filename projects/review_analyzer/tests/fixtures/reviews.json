@@ -1,0 +1,42 @@
+[
+  {
+    "text": "Absolutely fantastic product! Exceeded all my expectations. Best purchase I've made all year. Five stars without hesitation.",
+    "expected_rating": 5,
+    "expected_sentiment": "positive"
+  },
+  {
+    "text": "Terrible quality. Broke after two days. Complete waste of money. Would not recommend to anyone.",
+    "expected_rating": 1,
+    "expected_sentiment": "negative"
+  },
+  {
+    "text": "It's okay. Does what it says on the box, nothing more, nothing less. Shipping was fine.",
+    "expected_rating": 3,
+    "expected_sentiment": "neutral"
+  },
+  {
+    "text": "Great build quality and the battery life is impressive. Took a few days to get used to the controls but overall very happy.",
+    "expected_rating": 4,
+    "expected_sentiment": "positive"
+  },
+  {
+    "text": "The product itself is decent but customer service was awful. Took three weeks to ship and they never responded to my emails.",
+    "expected_rating": 2,
+    "expected_sentiment": "negative"
+  },
+  {
+    "text": "পণ্যটি খুবই ভালো। দাম একটু বেশি মনে হলেও মান অনুযায়ী ঠিকই আছে। আমি সন্তুষ্ট।",
+    "expected_rating": 4,
+    "expected_sentiment": "positive"
+  },
+  {
+    "text": "El producto llegó a tiempo y funciona bien. No es el mejor que he visto pero cumple su función.",
+    "expected_rating": 3,
+    "expected_sentiment": "neutral"
+  },
+  {
+    "text": "I've bought this three times now. Every time it's exactly what I need. Reliable and affordable.",
+    "expected_rating": 5,
+    "expected_sentiment": "positive"
+  }
+]
