@@ -20,10 +20,15 @@ def main():
             break
 
         history.append(HumanMessage(content=user_input))
-        response = model.invoke(history)
-        history.append(AIMessage(content=response.content))
 
-        print(f"Bot: {response.content}\n")
+        print("Bot: ", end="", flush=True)
+        full_response = ""
+        for chunk in model.stream(history):
+            print(chunk.content, end="", flush=True)
+            full_response += chunk.content
+        print("\n")
+
+        history.append(AIMessage(content=full_response))
 
 
 if __name__ == "__main__":

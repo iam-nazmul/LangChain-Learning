@@ -1,0 +1,5 @@
+langchain
+langchain_ollama
+ollama
+fastapi[standard]
+pydantic

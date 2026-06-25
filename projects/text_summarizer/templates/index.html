@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Text Summarizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center p-6">
+  <div class="w-full max-w-2xl space-y-6">
+    <div class="text-center">
+      <h1 class="text-3xl font-bold text-indigo-400">Text Summarizer</h1>
+      <p class="text-gray-400 mt-1 text-sm">Powered by gemma3:4b via Ollama</p>
+    </div>
+
+    <div class="bg-gray-900 rounded-2xl p-6 shadow-lg space-y-4">
+      <textarea
+        id="inputText"
+        rows="8"
+        placeholder="Paste your long text here..."
+        class="w-full bg-gray-800 text-gray-100 placeholder-gray-500 rounded-xl p-4 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      ></textarea>
+
+      <button
+        id="summarizeBtn"
+        onclick="summarize()"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all text-white font-semibold py-3 rounded-xl"
+      >
+        Summarize
+      </button>
+    </div>
+
+    <div id="resultBox" class="hidden bg-gray-900 rounded-2xl p-6 shadow-lg space-y-2">
+      <h2 class="text-sm font-semibold text-indigo-400 uppercase tracking-wider">Summary</h2>
+      <p id="summaryText" class="text-gray-200 leading-relaxed whitespace-pre-line"></p>
+    </div>
+
+    <div id="errorBox" class="hidden bg-red-900/40 border border-red-700 rounded-2xl p-4 text-red-300 text-sm"></div>
+  </div>
+
+  <script>
+    async function summarize() {
+      const text = document.getElementById("inputText").value.trim();
+      const btn = document.getElementById("summarizeBtn");
+      const resultBox = document.getElementById("resultBox");
+      const summaryText = document.getElementById("summaryText");
+      const errorBox = document.getElementById("errorBox");
+
+      errorBox.classList.add("hidden");
+      resultBox.classList.add("hidden");
+
+      if (!text) {
+        errorBox.textContent = "Please enter some text to summarize.";
+        errorBox.classList.remove("hidden");
+        return;
+      }
+
+      btn.textContent = "Summarizing...";
+      btn.disabled = true;
+
+      try {
+        const res = await fetch("/summarize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+
+        if (!res.ok) throw new Error("Server error: " + res.status);
+
+        const data = await res.json();
+        summaryText.textContent = data.summary;
+        resultBox.classList.remove("hidden");
+      } catch (err) {
+        errorBox.textContent = "Error: " + err.message;
+        errorBox.classList.remove("hidden");
+      } finally {
+        btn.textContent = "Summarize";
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
