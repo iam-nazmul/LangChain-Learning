@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Local Voice Bot</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 16px; }
+  #log { border: 1px solid #ddd; border-radius: 8px; padding: 12px; min-height: 200px; margin-bottom: 12px; }
+  .you { color: #2563eb; margin: 6px 0; }
+  .bot { color: #16a34a; margin: 6px 0; }
+  button { font-size: 16px; padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; }
+  #mic { background: #2563eb; color: white; }
+  #mic.listening { background: #dc2626; }
+  #status { color: #666; font-size: 14px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h2>🎙️ Local Voice Bot (Gemma3 via Ollama)</h2>
+<div id="log"></div>
+<button id="mic">🎤 Hold to talk</button>
+<div id="status">Idle</div>
+
+<script>
+const log = document.getElementById('log');
+const micBtn = document.getElementById('mic');
+const statusEl = document.getElementById('status');
+const sessionId = crypto.randomUUID();
+
+function addLine(who, text) {
+  const p = document.createElement('div');
+  p.className = who;
+  p.textContent = (who === 'you' ? 'You: ' : 'Bot: ') + text;
+  log.appendChild(p);
+  log.scrollTop = log.scrollHeight;
+}
+
+// --- Speech recognition (STT) ---
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SpeechRecognition) {
+  statusEl.textContent = 'Speech recognition not supported in this browser (try Chrome).';
+}
+const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+if (recognition) {
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = async (event) => {
+    const transcript = event.results[0][0].transcript;
+    addLine('you', transcript);
+    statusEl.textContent = 'Thinking...';
+    await sendToBot(transcript);
+  };
+
+  recognition.onerror = (e) => {
+    statusEl.textContent = 'Mic error: ' + e.error;
+    micBtn.classList.remove('listening');
+  };
+
+  recognition.onend = () => {
+    micBtn.classList.remove('listening');
+  };
+}
+
+micBtn.addEventListener('click', () => {
+  if (!recognition) return;
+  micBtn.classList.add('listening');
+  statusEl.textContent = 'Listening...';
+  recognition.start();
+});
+
+// --- Send text to FastAPI backend ---
+async function sendToBot(message) {
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, message })
+    });
+    const data = await res.json();
+    addLine('bot', data.reply);
+    speak(data.reply);
+    statusEl.textContent = 'Idle';
+  } catch (err) {
+    statusEl.textContent = 'Error contacting server.';
+  }
+}
+
+// --- Text to speech (TTS) ---
+let maleVoice = null;
+function pickMaleVoice() {
+  const voices = speechSynthesis.getVoices();
+  maleVoice = voices.find(v =>
+    /male|david|daniel|george|fred|alex/i.test(v.name) && !/female/i.test(v.name)
+  ) || null;
+}
+speechSynthesis.onvoiceschanged = pickMaleVoice;
+pickMaleVoice();
+
+function speak(text) {
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.0;
+  if (maleVoice) utterance.voice = maleVoice;
+  else utterance.pitch = 0.7; // no male voice found — approximate with lower pitch
+  speechSynthesis.speak(utterance);
+}
+</script>
+</body>
+</html>
