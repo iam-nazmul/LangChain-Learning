@@ -35,16 +35,20 @@ chain = prompt | review_analyzer
 
 if __name__ == "__main__":
 
-    #  
-    result = chain.invoke(
-        {"review": "প্রোডাক্টটা ভালো ছিল কিন্তু ডেলিভারি অনেক দেরি হয়েছে।"}
-    )
+    while True:
+        review = input("রিভিউ লিখুন (বের হতে 'exit' লিখুন): ").strip()
+        if review.lower() == "exit":
+            break
+        if not review:
+            continue
 
-    print(result)
-    print()
-    print(type(result))  # <class '__main__.ReviewAnalysis'>
-    print()
-    print(f"Rating: {result.rating}, Sentiment: {result.sentiment}, Confidence: {result.confidence}")
-    print()
-    print(f"Summary: {result.summary}")
-    print()
+        result = chain.invoke({"review": review})
+
+        print(result)
+        print()
+        print(type(result))  # <class '__main__.ReviewAnalysis'>
+        print()
+        print(f"Rating: {result.rating}, Sentiment: {result.sentiment}, Confidence: {result.confidence}")
+        print()
+        print(f"Summary: {result.summary}")
+        print()
