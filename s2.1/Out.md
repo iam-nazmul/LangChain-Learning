@@ -1,195 +1,241 @@
-Here's a comprehensive **LangChain Best Practices Guide** to help you build robust, maintainable, and efficient applications using the LangChain framework. This guide covers key areas like prompt engineering, model configuration, memory management, and system design.
+## LangChain‑এর জন্য পেশাদারদের সর্বোত্তম অনুশীলন গাইডলাইন (বাংলা)
+
+> **নোট:** এই গাইডটি Python‑ভিত্তিক LangChain ব্যবহারকে কেন্দ্র করে তৈরি করা হয়েছে, তবে ধারণাগুলো অন্য ভাষা/ফ্রেমওয়ার্কেও প্রযোজ্য।
 
 ---
 
-### **1. Prompt Engineering Best Practices**
-- **Be Specific and Clear**:  
-  Design prompts that are unambiguous and provide clear instructions. Avoid vague or open-ended queries.  
-  *Example*: Instead of "Summarize this article," use "Provide a 3-sentence summary of the article's main findings."
+### ১. প্রকল্পের গঠন (Project Structure)
 
-- **Use Prompt Templates for Reusability**:  
-  Leverage LangChain’s `PromptTemplate` to create modular, reusable prompts. This allows easy iteration and versioning.  
-  ```python
-  from langchain import PromptTemplate
-  template = PromptTemplate(input_variables=["topic"], template="Explain {topic} in simple terms.")
-  ```
+| ফোল্ডার / ফাইল | উদ্দেশ্য | উদাহরণ |
+|----------------|----------|--------|
+| `src/` | মূল কোড (চেইন, টুল, মডেল ইন্টারফেস) | `src/chains/`, `src/tools/`, `src/prompts/` |
+| `tests/` | ইউনিট/ইন্টিগ্রেশন টেস্ট | `pytest` ব্যবহার করে |
+| `configs/` | YAML/JSON‑এ পরিবেশ‑নির্দিষ্ট কনফিগ | `dev.yaml`, `prod.yaml` |
+| `scripts/` | ডেটা প্রিপ্রসেস, মডেল ডিপ্লয় স্ক্রিপ্ট | `scripts/run_server.py` |
+| `requirements.txt` বা `pyproject.toml` | ডিপেন্ডেন্সি ম্যানেজমেন্ট | `langchain==0.2.*` |
+| `Dockerfile` | কন্টেইনারাইজেশন | `FROM python:3.11-slim` |
+| `README.md` | প্রকল্পের সারসংক্ষেপ, চালানোর ধাপ | – |
 
-- **Incorporate Examples (Few-Shot Prompting)**:  
-  Use few-shot examples to guide the model toward the desired output format.  
-  ```python
-  template = PromptTemplate(
-      input_variables=["question"],
-      template="Answer the question based on the examples:\n\nExample 1: Q: What is AI? A: AI is...\nExample 2: Q: {question} A:"
-  )
-  ```
-
-- **Test and Iterate**:  
-  Continuously test prompts with different inputs and refine them based on model outputs.
+**সেরা অনুশীলন:**  
+- **মডুলারাইজেশন** – প্রতিটি চেইন, টুল, প্রম্পট আলাদা মডিউলে রাখুন।  
+- **ইম্পোর্ট স্টাইল** – `from src.chains import SummarizeChain` এর মতো অ্যাবসোলিউট ইম্পোর্ট ব্যবহার করুন।  
+- **টাইপ হিন্ট** – `from typing import List, Dict` ব্যবহার করে কোডের রিডেবিলিটি বাড়ান।
 
 ---
 
-### **2. Model Configuration Best Practices**
-- **Choose the Right Model**:  
-  Select a model (e.g., GPT-3.5, GPT-4, Llama) based on your use case (e.g., cost, speed, accuracy). Use smaller models for simple tasks to reduce costs.
+### ২. পরিবেশ ও সিকিউরিটি (Environment & Security)
 
-- **Tune Model Parameters**:  
-  Adjust parameters like `temperature`, `max_tokens`, and `top_p` to balance creativity and consistency.  
-  ```python
-  from langchain.llms import OpenAI
-  llm = OpenAI(model_name="gpt-3.5-turbo", temperature=0.7, max_tokens=150)
-  ```
-
-- **Use Model Guards**:  
-  Implement guards to handle edge cases (e.g., invalid inputs, unexpected outputs) and prevent hallucinations.
+| বিষয় | কীভাবে হ্যান্ডেল করবেন |
+|------|------------------------|
+| **সিক্রেট ম্যানেজমেন্ট** | `python-dotenv` বা `AWS Secrets Manager` ব্যবহার করুন। `.env` ফাইলকে **gitignore**‑এ রাখুন। |
+| **API রেট‑লিমিট** | রেট‑লিমিট হ্যান্ডলিং লজিক (exponential backoff) যোগ করুন। |
+| **ডেটা প্রাইভেসি** | ব্যবহারকারীর ইনপুট লগ না করা (বা হ্যাশ করা) নিশ্চিত করুন। GDPR/PDPA‑এর সাথে সামঞ্জস্য রাখুন। |
+| **ডিপেন্ডেন্সি স্ক্যান** | `pip-audit` বা `safety` দিয়ে সিকিউরিটি ভলনারেবিলিটি চেক করুন। |
+| **কন্টেইনার সিকিউরিটি** | `non-root` ইউজার দিয়ে Docker ইমেজ রান করুন, `--read-only` ফাইলসিস্টেম ব্যবহার করুন। |
 
 ---
 
-### **3. Memory Management**
-- **Use Memory for Contextual Continuity**:  
-  Leverage LangChain’s memory components (`ConversationBufferMemory`, `VectorStoreMemory`) to maintain context across interactions.  
-  ```python
-  from langchain.memory import ConversationBufferMemory
-  memory = ConversationBufferMemory()
-  ```
+### ৩. প্রম্পট ডিজাইন (Prompt Engineering)
 
-- **Limit Memory Size**:  
-  Set a maximum token limit for memory to avoid overwhelming the model. Use `ConversationSummaryMemory` for long-term interactions.
+1. **সুস্পষ্ট ও সংক্ষিপ্ত**  
+   ```python
+   PROMPT_TEMPLATE = """আপনি একজন পেশাদার ডেটা সায়েন্টিস্ট। 
+   নিম্নলিখিত টেক্সটের সংক্ষিপ্তসার তৈরি করুন:
+   {text}
+   সংক্ষিপ্তসারটি ৩টি বাক্যে সীমাবদ্ধ রাখুন।"""
+   ```
 
-- **External Memory Stores**:  
-  For persistent memory, integrate with vector databases (e.g., FAISS, Pinecone) or SQL databases.
+2. **ইনপুট ভ্যালিডেশন**  
+   - টেক্সটের দৈর্ঘ্য চেক করুন (`len(text) <= model_token_limit`).  
+   - অপ্রয়োজনীয় হোয়াইটস্পেস/HTML ট্যাগ সরিয়ে নিন।
 
----
+3. **সিস্টেম ও ইউজার রোল**  
+   - `ChatPromptTemplate`‑এ `system_message` দিয়ে মডেলকে রোল দিন।  
+   - ইউজার ইনপুটকে `HumanMessage` হিসেবে পাস করুন।
 
-### **4. Chains and Agents**
-- **Modularize Chains**:  
-  Break complex workflows into smaller, reusable chains. Use `SequentialChain` or `SimpleSequentialChain` for linear workflows.  
-  ```python
-  from langchain.chains import SequentialChain
-  chain = SequentialChain(chains=[chain1, chain2], input_variables=["input"])
-  ```
+4. **Few‑Shot উদাহরণ**  
+   - গুরুত্বপূর্ণ টাস্কে ২‑৩টি উদাহরণ যোগ করুন।  
+   - উদাহরণগুলোকে `PromptTemplate`‑এর `examples` ফিল্ডে রাখুন।
 
-- **Use Agents for Dynamic Tasks**:  
-  Use `AgentExecutor` with tools (e.g., APIs, databases) for tasks requiring external data or decision-making.  
-  ```python
-  from langchain.agents import AgentExecutor, initialize_agent
-  agent = initialize_agent(tools, llm, agent="zero-shot-react-description")
-  ```
-
-- **Test Chains Individually**:  
-  Validate each chain’s output before integrating them into larger workflows.
+5. **ডাইনামিক ভেরিয়েবল**  
+   - `PromptTemplate.from_template` ব্যবহার করে ভেরিয়েবল ইনজেক্ট করুন, সরাসরি স্ট্রিং ফরম্যাটিং নয়।
 
 ---
 
-### **5. Error Handling and Logging**
-- **Wrap Chains in Try-Except Blocks**:  
-  Handle exceptions gracefully to avoid application crashes.  
-  ```python
-  try:
-      result = chain.run(input)
-  except Exception as e:
-      logger.error(f"Chain failed: {e}")
-  ```
+### ৪. চেইন (Chains) ও এজেন্ট (Agents)
 
-- **Log Inputs and Outputs**:  
-  Use logging to track inputs, model responses, and errors for debugging and auditing.  
-  ```python
-  import logging
-  logging.basicConfig(level=logging.INFO)
-  ```
+| ধরণ | ব্যবহার | উদাহরণ |
+|------|--------|--------|
+| **SequentialChain** | একাধিক স্টেপ ধারাবাহিকভাবে চালাতে | `Extract → Summarize → Translate` |
+| **RouterChain** | ইনপুটের ভিত্তিতে ভিন্ন চেইন রাউট করতে | `if "code" in query: CodeChain else: QAChain` |
+| **AgentExecutor** | টুল কলের মাধ্যমে ডায়নামিক রেজোলিউশন | `SQLToolkit`, `SearchToolkit` |
+| **CustomChain** | আপনার নিজস্ব লজিক (ডেটা ফেচ, পোস্ট‑প্রসেস) | `class MyChain(Chain): ...` |
 
-- **Monitor Model Outputs**:  
-  Validate outputs against expected formats (e.g., JSON, structured data) and reject invalid responses.
+**সেরা অনুশীলন:**
+- **ইনপুট/আউটপুট স্পেসিফিকেশন** – `input_keys`, `output_keys` স্পষ্টভাবে ডিফাইন করুন।  
+- **ক্যাশিং** – একই ইনপুটের জন্য `@lru_cache` বা `langchain.cache` ব্যবহার করুন।  
+- **টুল রেজিস্ট্রি** – টুলগুলোকে `Tool` অবজেক্টে র‍্যাপ করে `AgentExecutor`‑এ পাস করুন।  
+- **টাইমআউট** – দীর্ঘ‑চলমান টাস্কে `timeout` প্যারামিটার দিন।
 
----
-
-### **6. Security and Compliance**
-- **Avoid Sensitive Data in Prompts**:  
-  Never include personally identifiable information (PII) or confidential data in prompts unless encrypted.
-
-- **Use API Keys Securely**:  
-  Store API keys in environment variables or secret managers (e.g., AWS Secrets Manager, HashiCorp Vault).
-
-- **Comply with Data Regulations**:  
-  Ensure your application adheres to GDPR, HIPAA, or other relevant regulations when handling user data.
-
----
-
-### **7. Performance Optimization**
-- **Cache Model Responses**:  
-  Use `CacheBackedChain` or external caching (e.g., Redis) to avoid redundant calls for identical inputs.  
-  ```python
-  from langchain.cache import RedisCache
-  langchain.llm_cache = RedisCache(redis_url="redis://localhost:6379")
-  ```
-
-- **Batch Requests**:  
-  Group multiple requests into a single batch to reduce API costs and latency.
-
-- **Asynchronous Processing**:  
-  Use `async` chains for non-blocking operations in high-throughput applications.
-
----
-
-### **8. Documentation and Versioning**
-- **Document Prompt Logic**:  
-  Clearly document the purpose and expected behavior of each prompt and chain.
-
-- **Version Chains and Prompts**:  
-  Use version control (e.g., Git) to track changes to prompts, chains, and model configurations.
-
-- **Monitor and Update**:  
-  Regularly review and update prompts and models to adapt to new data or user feedback.
-
----
-
-### **9. Testing and Validation**
-- **Unit Test Chains**:  
-  Write unit tests for individual chains to ensure correctness.  
-  ```python
-  def test_chain():
-      assert chain.run("test input") == "expected output"
-  ```
-
-- **Integration Test Workflows**:  
-  Simulate end-to-end workflows to validate interactions between chains, agents, and memory.
-
-- **Use Mock Models for Testing**:  
-  Replace real models with mock implementations during testing to avoid costs and delays.
-
----
-
-### **10. Scalability and Deployment**
-- **Containerize Applications**:  
-  Use Docker to package LangChain applications for consistent deployment across environments.
-
-- **Orchestrate with Kubernetes**:  
-  Deploy scalable, fault-tolerant systems using Kubernetes or serverless platforms (e.g., AWS Lambda).
-
-- **Monitor in Production**:  
-  Use observability tools (e.g., Prometheus, Datadog) to track latency, error rates, and usage patterns.
-
----
-
-### **Example: Full Workflow**
 ```python
-from langchain import PromptTemplate, LLMChain
+from langchain.chains import SequentialChain
+from langchain.prompts import PromptTemplate
 from langchain.llms import OpenAI
 
-# Define a prompt template
-template = PromptTemplate(
-    input_variables=["topic"],
-    template="Explain {topic} in 3 bullet points."
+# উদাহরণ: টেক্সট এক্সট্র্যাকশন → সারাংশ
+extract_prompt = PromptTemplate.from_template(
+    "দেওয়া ডকুমেন্ট থেকে মূল পয়েন্টগুলো বের করুন:\n{doc}"
+)
+summarize_prompt = PromptTemplate.from_template(
+    "উপরের পয়েন্টগুলোকে ২টি বাক্যে সংক্ষেপ করুন।"
 )
 
-# Initialize LLM and chain
-llm = OpenAI(model_name="gpt-3.5-turbo", temperature=0.5)
-chain = LLMChain(llm=llm, prompt=template)
+extract_chain = LLMChain(llm=OpenAI(), prompt=extract_prompt, output_key="points")
+summarize_chain = LLMChain(llm=OpenAI(), prompt=summarize_prompt, output_key="summary")
 
-# Execute chain
-result = chain.run(topic="Quantum Computing")
-print(result)
+pipeline = SequentialChain(
+    chains=[extract_chain, summarize_chain],
+    input_variables=["doc"],
+    output_variables=["summary"]
+)
 ```
 
 ---
 
-By following these best practices, you’ll build **robust, scalable, and maintainable** LangChain applications that leverage the full power of LLMs while minimizing risks and costs.
+### ৫. মেমরি (Memory) ব্যবহারে টিপস
+
+| মেমরি টাইপ | কখন ব্যবহার করবেন |
+|------------|-------------------|
+| **ConversationBufferMemory** | সাধারণ চ্যাটবট, পুরো কথোপকথন সংরক্ষণ। |
+| **ConversationSummaryMemory** | দীর্ঘ সেশন, সংক্ষিপ্তসার রেখে টোকেন সেভ। |
+| **VectorStoreRetrieverMemory** | রিট্রিভাল‑অগমেন্টেড জেনারেশন (RAG)‑এ ডকুমেন্ট রিলেভ্যান্স বজায় রাখতে। |
+
+**প্র্যাকটিক্যাল টিপস**
+- **টোকেন সীমা**: মেমরি রিট্রিভাল করার আগে `max_token_limit` চেক করুন।  
+- **ডেটা পারসিস্টেন্স**: `Redis`, `PostgreSQL` বা `FAISS`‑এ মেমরি সেভ করুন, যাতে রিস্টার্টে ডেটা হারিয়ে না যায়।  
+- **প্রাইভেসি**: ব্যবহারকারীর সংবেদনশীল তথ্য মেমরিতে রাখবেন না; হ্যাশ বা এনক্রিপ্ট করে সংরক্ষণ করুন।
+
+```python
+from langchain.memory import ConversationSummaryMemory
+from langchain.llms import OpenAI
+
+memory = ConversationSummaryMemory(
+    llm=OpenAI(),
+    max_token_limit=1500,
+    return_messages=True
+)
+```
+
+---
+
+### ৬. রিট্রিভাল‑অগমেন্টেড জেনারেশন (RAG)
+
+1. **ডেটা ইনজেস্ট**  
+   - `DocumentLoader` (CSV, PDF, Web) ব্যবহার করে ডকুমেন্ট লোড করুন।  
+   - টেক্সট ক্লিনিং → সেম্যান্টিক সেগমেন্টেশন (চাঙ্ক সাইজ ৪০০‑৬০০ টোকেন)।
+
+2. **ইন্ডেক্সিং**  
+   - `FAISS`, `Chroma`, `Pinecone` ইত্যাদি ভেক্টর স্টোরে ইনডেক্স করুন।  
+   - মেটাডেটা (source, timestamp) সংরক্ষণ করুন।
+
+3. **রিট্রিভার**  
+   - `Retriever`‑কে `TopK` (সাধারণত ৩‑৫) সেট করুন।  
+   - রিট্রিভড ডকুমেন্টকে `PromptTemplate`‑এ ইনজেক্ট করুন।
+
+4. **ডাউনস্ট্রিম চেইন**  
+   - রিট্রিভড ডকুমেন্ট + ইউজার কোয়েরি → `LLMChain` (প্রম্পটে `Context:` যোগ করুন)।
+
+```python
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import FAISS
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.chains import RetrievalQA
+
+loader = PyPDFLoader("policy.pdf")
+docs = loader.load_and_split(text_splitter=RecursiveCharacterTextSplitter(chunk_size=500))
+
+embeddings = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(docs, embeddings)
+
+retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+
+qa_chain = RetrievalQA.from_chain_type(
+    llm=OpenAI(),
+    retriever=retriever,
+    return_source_documents=True
+)
+```
+
+---
+
+### ৭. লগিং, মনিটরিং ও অডিট (Logging, Monitoring & Auditing)
+
+| টুল | ব্যবহার |
+|-----|----------|
+| **loguru** | স্ট্রাকচার্ড লগ (JSON) |
+| **Prometheus + Grafana** | রিকোয়েস্ট লেটেন্সি, টোকেন ব্যবহার, ত্রুটি রেট |
+| **Sentry** | এক্সসেপশন ট্র্যাকিং |
+| **OpenTelemetry** | ডিস্ট্রিবিউটেড ট্রেসিং (যদি মাইক্রোসার্ভিসে ডিপ্লয় করেন) |
+
+**লগ ফরম্যাট উদাহরণ (JSON):**
+```json
+{
+  "timestamp": "2026-07-12T14:23:45Z",
+  "level": "INFO",
+  "request_id": "a1b2c3d4",
+  "user_id": "U12345",
+  "prompt_tokens": 124,
+  "completion_tokens": 312,
+  "total_cost_usd": 0.0012,
+  "status": "SUCCESS"
+}
+```
+
+- **কস্ট ট্র্যাকিং** – `OpenAI`‑এর `usage` রেসপন্স থেকে টোকেন সংখ্যা বের করে ডেটাবেজে সঞ্চয় করুন।  
+- **অ্যালার্ট** – টোকেন ব্যবহার নির্দিষ্ট থ্রেশহোল্ড অতিক্রম করলে Slack/Email অ্যালার্ট।
+
+---
+
+### ৮. টেস্টিং ও CI/CD
+
+| টেস্টের ধরন | কীভাবে করবেন |
+|------------|----------------|
+| **ইউনিট টেস্ট** | `pytest` + `pytest-mock` দিয়ে LLM কলকে মক করুন (`MockOpenAI`). |
+| **ইন্টিগ্রেশন টেস্ট** | ছোট‑সাইজের রিট্রিভার (FAISS‑in‑memory) দিয়ে পুরো চেইন চালান। |
+| **পারফরম্যান্স টেস্ট** | `locust` বা `k6` দিয়ে রিকোয়েস্ট লেটেন্সি মাপুন। |
+| **ডেটা ভ্যালিডেশন** | `pydantic` মডেল দিয়ে ইনপুট/আউটপুট স্কিমা নিশ্চিত করুন। |
+
+**CI/CD পাইললাইন (GitHub Actions) উদাহরণ:**
+```yaml
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-mock
+      - name: Run tests
+        run: pytest -v --cov=src
+```
+
+---
+
+### ৯. ডিপ্লয়মেন্ট ও স্কেলিং
+
+| পরিবেশ | কীভাবে ডিপ্লয় করবেন |
+|--------|----------------------|
+| **Docker** | `docker build -t my-langchain-app .` → `docker run -p 8000:8000` |
+| **Kubernetes** | `Deployment` + `HorizontalPodAutoscaler` (CPU/Memory ভিত্তিক) |
+| **Serverless (AWS Lambda)** | `aws-l
