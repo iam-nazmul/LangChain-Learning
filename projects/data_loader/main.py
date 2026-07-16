@@ -2,7 +2,7 @@
 ChatAnthropic example with configuration options.
 
 Install:
-    pip install -U langchain-anthropic
+    pip install -U langchain-anthropic langchain-community beautifulsoup4
 """
 
 
@@ -45,6 +45,9 @@ model = ChatAnthropic(
 # Note: it uses `open_encoding`, not `encoding`. For a remote URL use WebBaseLoader instead.
 loader = BSHTMLLoader("index.html", open_encoding="utf-8")
 documents = loader.load()
+
+
+
 
 
 # ---------------------------------------------------------------------------

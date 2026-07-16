@@ -2,7 +2,7 @@
 ChatAnthropic example with configuration options.
 
 Install:
-    pip install -U langchain-anthropic langchain-community
+    pip install -U langchain-anthropic langchain-community beautifulsoup4
 """
 
 
@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-from langchain_community.document_loaders import TextLoader, BSHTMLLoader
+from langchain_community.document_loaders import TextLoader, BSHTMLLoader, WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -43,8 +43,22 @@ model = ChatAnthropic(
 
 # BSHTMLLoader parses a LOCAL html file with BeautifulSoup (pip install bs4 lxml).
 # Note: it uses `open_encoding`, not `encoding`. For a remote URL use WebBaseLoader instead.
-loader = BSHTMLLoader("index.html", open_encoding="utf-8")
+# loader = BSHTMLLoader("index.html", open_encoding="utf-8")
+# documents = loader.load()
+
+
+
+# WebBaseLoader fetches a live URL and parses it with BeautifulSoup.
+# Many sites reject requests without a browser User-Agent, so we set one and a timeout.
+loader = WebBaseLoader(
+    "https://glascutr.com/",
+    header_template={"User-Agent": "Mozilla/5.0"},
+    requests_kwargs={"timeout": 15},
+)
 documents = loader.load()
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -76,11 +90,9 @@ messages = [
 ]
 
 try:
+    response = model.invoke(messages)
     print("\n--- Summary ---")
-    # stream() yields chunks as the model generates them, so tokens print live
-    for chunk in model.stream(messages):
-        print(chunk.content, end="", flush=True)
-    print()  # final newline
+    print(response.content)
 
 
 except anthropic.OverloadedError:
