@@ -1,104 +1,89 @@
-from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+"""
+ChatAnthropic example with configuration options.
 
-from langchain_community.document_loaders import TextLoader
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.document_loaders import CSVLoader
-from langchain_community.document_loaders import WebBaseLoader
-from langchain_community.document_loaders import DirectoryLoader
-
-model = ChatOllama(model="gemma3:4b")
+Install:
+    pip install -U langchain-anthropic langchain-community
+"""
 
 
-# ---------------------------------------------------------------------------------------------------------------------
-# ---------------------------------------------------------------------------------------------------------------------
-# ---------------------------------------------------------------------------------------------------------------------
-# All loader loaders return a list of Document objects, which contain the text and metadata of the loaded documents.
-# ---------------------------------------------------------------------------------------------------------------------
-# ---------------------------------------------------------------------------------------------------------------------
-loader = TextLoader("data.txt")
-documents = loader.load()
+# pip install -U langchain-anthropic
+# export ANTHROPIC_API_KEY="your-api-key"
+
+import anthropic
+from langchain_anthropic import ChatAnthropic
+
+from dotenv import load_dotenv
+load_dotenv()
 
 
-loader = PyPDFLoader("file.pdf")
-documents = loader.load()
+from langchain_community.document_loaders import TextLoader, BSHTMLLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.messages import SystemMessage, HumanMessage
 
 
-
-loader = CSVLoader(file_path="data.csv")
-documents = loader.load()
-
-
-
-loader = WebBaseLoader("https://www.glascutr.com")
-documents = loader.load()
-
-
-
-loader = DirectoryLoader("./docs", glob="**/*.pdf")
-documents = loader.load()
-
-
-
-# UnstructuredFileLoader: auto-detects the file type (PDF, DOCX, PPTX, HTML, EML...)
-# Requires: pip install "unstructured[all-docs]"
-from langchain_community.document_loaders import UnstructuredFileLoader
-
-loader = UnstructuredFileLoader("file.pdf")
-documents = loader.load()
-
-# mode="elements" splits the file into pieces (Title, NarrativeText, Table...)
-loader = UnstructuredFileLoader("file.pdf", mode="elements")
-documents = loader.load()
-
-
-
-
-
-# NotionDirectoryLoader: loads a Notion workspace export (Settings > Export content > Markdown & CSV)
-# Unzip the export and point the loader at the folder
-from langchain_community.document_loaders import NotionDirectoryLoader
-
-loader = NotionDirectoryLoader("notion_export/")
-documents = loader.load()
-
-# NotionDBLoader: loads pages live from a Notion database via the API
-# Requires a Notion integration token (https://www.notion.so/my-integrations)
-# and sharing the database with the integration
-from langchain_community.document_loaders import NotionDBLoader
-
-loader = NotionDBLoader(
-    integration_token="secret_xxx",
-    database_id="your-database-id",
-    request_timeout_sec=30,
+model = ChatAnthropic(
+    # model="claude-sonnet-4-5-20250929",
+    model="claude-haiku-4-5-20251001",
+    temperature=0,
+    max_tokens=1024,
+    # timeout=,
+    max_retries=5,   # retries 429/500/529 (overloaded) errors with exponential backoff
+    # base_url="...",
+    # Refer to API reference for full list of parameters
 )
+
+
+# ---------------------------------------------------------------------------
+# 1. Load a document
+#    A loader returns a list[Document]; each Document has .page_content + .metadata
+# ---------------------------------------------------------------------------
+# loader = TextLoader("data.txt", encoding="utf-8")
+# documents = loader.load()
+
+
+# BSHTMLLoader parses a LOCAL html file with BeautifulSoup (pip install bs4 lxml).
+# Note: it uses `open_encoding`, not `encoding`. For a remote URL use WebBaseLoader instead.
+loader = BSHTMLLoader("index.html", open_encoding="utf-8")
 documents = loader.load()
 
 
-
-# GoogleDriveLoader: loads Google Docs/Sheets/files from Drive
-# Requires: pip install langchain-google-community google-api-python-client google-auth-oauthlib
-# Needs OAuth credentials.json (Google Cloud Console) — token is cached after first login
-from langchain_google_community import GoogleDriveLoader
-
-loader = GoogleDriveLoader(
-    folder_id="your-folder-id",              # load everything in a folder
-    # document_ids=["doc-id-1", "doc-id-2"], # or specific Google Docs
-    # file_ids=["file-id"],                  # or specific files (PDF etc.)
-    credentials_path="credentials.json",
-    token_path="token.json",
-    recursive=False,
+# ---------------------------------------------------------------------------
+# 2. Split it into chunks (so a large file fits the model's context window)
+# ---------------------------------------------------------------------------
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200,
 )
-documents = loader.load()
+chunks = splitter.split_documents(documents)
+
+print(f"Loaded {len(documents)} document(s), split into {len(chunks)} chunk(s).")
 
 
+# ---------------------------------------------------------------------------
+# 3. Feed the content to the model
+#    (For a small file we pass the whole text; for large corpora you'd embed
+#     the chunks into a vector store and retrieve only the relevant ones.)
+# ---------------------------------------------------------------------------
+context = "\n\n".join(doc.page_content for doc in documents)
 
-# SlackDirectoryLoader: loads a Slack workspace export
-# (Workspace Settings > Import/Export Data > Export) — point it at the zip file
-from langchain_community.document_loaders import SlackDirectoryLoader
+messages = [
+    SystemMessage(
+        content="You are a helpful assistant. Answer only from the provided context."
+    ),
+    HumanMessage(
+        content=f"Summarize the following document in 3 bullet points:\n\n{context}"
+    ),
+]
 
-loader = SlackDirectoryLoader(
-    zip_path="slack_export.zip",
-    workspace_url="https://your-workspace.slack.com",  # optional: adds message URLs to metadata
-)
-documents = loader.load()
+try:
+    print("\n--- Summary ---")
+    # stream() yields chunks as the model generates them, so tokens print live
+    for chunk in model.stream(messages):
+        print(chunk.content, end="", flush=True)
+    print()  # final newline
+
+
+except anthropic.OverloadedError:
+    # 529: Anthropic's API is temporarily overloaded. Not a bug — retry later.
+    print("\nAnthropic API is overloaded (529). Please try again in a moment.")
+
