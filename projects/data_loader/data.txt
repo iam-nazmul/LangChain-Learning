@@ -1,0 +1,14 @@
+LangChain Document Loaders
+
+Document loaders are the entry point for bringing external data into a LangChain
+application. Every loader exposes a .load() method that returns a list of Document
+objects. A Document holds two things: page_content (the raw text) and metadata
+(source path, page number, and any extra info the loader attaches).
+
+Common loaders include TextLoader for plain text, PyPDFLoader for PDFs,
+CSVLoader for tabular data, WebBaseLoader for web pages, and DirectoryLoader
+for loading many files at once with a glob pattern.
+
+Once documents are loaded they are usually split into smaller chunks with a
+text splitter, embedded into vectors, and stored in a vector database so that a
+retriever can later fetch only the most relevant pieces for a user's question.
