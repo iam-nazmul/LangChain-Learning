@@ -51,7 +51,11 @@ model = ChatAnthropic(
 # WebBaseLoader fetches a live URL and parses it with BeautifulSoup.
 # Many sites reject requests without a browser User-Agent, so we set one and a timeout.
 loader = WebBaseLoader(
-    "https://glascutr.com/",
+     web_paths=[
+        "https://glascutr.com/",
+        "https://bastuana.com/",
+        "https://bjsa-bd.com/",
+    ],
     header_template={"User-Agent": "Mozilla/5.0"},
     requests_kwargs={"timeout": 15},
 )
@@ -90,9 +94,11 @@ messages = [
 ]
 
 try:
-    response = model.invoke(messages)
     print("\n--- Summary ---")
-    print(response.content)
+    # stream() yields chunks as the model generates them, so tokens print live
+    for chunk in model.stream(messages):
+        print(chunk.content, end="", flush=True)
+    print()  # final newline
 
 
 except anthropic.OverloadedError:
