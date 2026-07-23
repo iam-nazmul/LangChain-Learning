@@ -40,7 +40,7 @@ cd ~/LangChain-Learning/projects/_7_mini_rag_pdf_reader_qa
 
 ## Create Virtualenv
 ```
-virtualenv -p python3.14 venv
+virtualenv venv
 ```
 ## Activate vittualenv
 
