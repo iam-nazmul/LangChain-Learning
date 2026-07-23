@@ -34,7 +34,7 @@ with st.sidebar:
     st.header("⚙️ Settings")
     model_name = st.selectbox(
         "Select Ollama model",
-        # ["qwen3.5:4b","gemma3:4b","llama3", "phi3", "mistral"],
+        # ["gemma3:4b","llama3","qwen3.5:4b", "phi3", "mistral"],
         ["llama3", "phi3", "mistral"],
         help="Must be downloaded beforehand with 'ollama pull <model>'"
     )
@@ -230,11 +230,13 @@ if st.session_state.qa_chain is not None:
 
     # session_state.query_text is used as the text box value, so the spoken
     # words land here and can still be edited before searching.
-    query = st.text_input("Your question:", key="query_text")
+    # A form makes pressing Enter in the box submit (same as clicking the button).
+    with st.form("qa_form"):
+        query = st.text_input("Your question:", key="query_text")
+        submitted = st.form_submit_button("Find answer 🔍")
 
-    # Run when "Find answer" is clicked OR when a voice result was just captured
-    # (auto_run set after Stop) — so Stop answers automatically.
-    submitted = st.button("Find answer 🔍")
+    # Run when the form is submitted (Enter or button click) OR when a voice
+    # result was just captured (auto_run set after Stop) — so Stop answers too.
     auto_run = st.session_state.pop("auto_run", False)
     if (submitted or auto_run) and query:
         with st.spinner("Generating answer..."):
