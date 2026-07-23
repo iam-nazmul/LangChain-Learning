@@ -9,3 +9,5 @@ langchain-ollama
 langchain-chroma
 pypdf
 sentence-transformers
+streamlit-mic-recorder
+gTTS
