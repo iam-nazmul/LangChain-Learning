@@ -1,0 +1,5 @@
+[server]
+# Streamlit's default module watcher crawls PyTorch internals (torch.classes),
+# which triggers a spurious "No module named 'torchvision'" import error.
+# We don't need torchvision for text embeddings, so disable the watcher.
+fileWatcherType = "none"
