@@ -1,0 +1,1 @@
+print("Retrivers learn module loaded successfully.")
