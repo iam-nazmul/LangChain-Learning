@@ -707,3 +707,63 @@ print("সবচেয়ে relevant ডকুমেন্ট:", results[0].pay
 ---
 
 
+## খুব সংক্ষিপ্ত উদাহরণ (Python, Pinecone দিয়ে)
+
+Pinecone একটা **cloud-hosted managed service**, তাই প্রথমে [pinecone.io](https://www.pinecone.io) থেকে ফ্রি একাউন্ট খুলে **API key** নিতে হয়।
+
+```python
+from pinecone import Pinecone, ServerlessSpec
+from sentence_transformers import SentenceTransformer
+
+# ১. Pinecone client init (API key দিয়ে)
+pc = Pinecone(api_key="YOUR_API_KEY")
+
+# ২. Embedding model লোড করা
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# ৩. Index তৈরি (cloud-এ, একবারই করতে হয়)
+index_name = "my-docs"
+if index_name not in pc.list_indexes().names():
+    pc.create_index(
+        name=index_name,
+        dimension=384,
+        metric="cosine",
+        spec=ServerlessSpec(cloud="aws", region="us-east-1")
+    )
+
+index = pc.Index(index_name)
+
+# ৪. ডকুমেন্ট এম্বেড করে যোগ করা (upsert)
+documents = ["গাড়ি কেনার নিয়ম", "রান্নার রেসিপি", "প্রোগ্রামিং শেখা"]
+embeddings = model.encode(documents)
+
+index.upsert(vectors=[
+    (str(i), embeddings[i].tolist(), {"text": documents[i]})
+    for i in range(len(documents))
+])
+
+# ৫. Query করা
+query_vector = model.encode("vehicle কেনার উপায়").tolist()
+results = index.query(vector=query_vector, top_k=1, include_metadata=True)
+
+print("সবচেয়ে relevant ডকুমেন্ট:", results["matches"][0]["metadata"]["text"])
+```
+
+### ইনস্টল
+
+```bash
+pip install pinecone sentence-transformers
+```
+
+### আগের গুলোর সাথে পার্থক্য
+
+| বিষয় | Qdrant (local) | Pinecone |
+|---|---|---|
+| হোস্টিং | নিজের কম্পিউটার/সার্ভার | সম্পূর্ণ Pinecone-এর cloud-এ |
+| সেটআপ | Docker বা local file | শুধু API key |
+| খরচ | ফ্রি (নিজের রিসোর্স ব্যবহার) | Free tier আছে, তবে স্কেল বাড়লে paid |
+| Maintenance | নিজে ম্যানেজ করতে হয় | Pinecone নিজেই স্কেল/আপডেট/backup করে |
+
+**সংক্ষেপে**: প্রোটোটাইপ/শেখার জন্য Chroma বা FAISS, নিজের ইনফ্রা কন্ট্রোল করতে চাইলে Qdrant, আর ইনফ্রা নিয়ে একদম মাথা ঘামাতে না চাইলে (production-ready, auto-scaling) Pinecone সবচেয়ে সহজ।
+
+
